@@ -1,0 +1,6 @@
+/out/
+contenders.yaml
+.env
+.env.*
+__pycache__/
+*.pyc

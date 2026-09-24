@@ -1,0 +1,53 @@
+id: artifactory-route
+title: "Route image + pip downloads through Artifactory (SEC-219)"
+category: artifactory
+repo: microblog
+timeout_s: 1200
+prompt: prompt.md
+prefetch: prefetch.sh
+allowed_paths: [Dockerfile, Containerfile, .dockerignore, ".github/**", pip.conf, README.md, "docs/**"]
+checks:
+  - id: base-via-artifactory
+    title: Base image pulled via Artifactory docker-remote
+    run: python3 "$LIB/checklib.py" docker-from-registry artifactory.example.com/docker-remote/
+    weight: 2
+  - id: pip-via-artifactory
+    title: pip resolves from the Artifactory PyPI virtual repo
+    run: python3 "$LIB/checklib.py" file-mentions 'artifactory\.example\.com/artifactory/api/pypi/pypi-virtual/simple' Dockerfile '.github/workflows/*' pip.conf
+    weight: 2
+  - id: pip-build-secret
+    title: pip credentials arrive via a BuildKit secret mount
+    run: python3 "$LIB/checklib.py" docker-pip-uses-secret
+    weight: 2
+  - id: no-cred-args
+    title: No credentials in ARG/ENV or URLs in the Dockerfile
+    run: python3 "$LIB/checklib.py" docker-no-cred-args
+    weight: 2
+  - id: no-literal-secrets
+    title: No literal credentials in Dockerfile/workflows/pip.conf
+    run: python3 "$LIB/checklib.py" no-literal-secret Dockerfile '.github/workflows/*' pip.conf
+    weight: 2
+  - id: actionlint
+    title: actionlint reports no findings
+    run: actionlint -no-color
+  - id: ci-login
+    title: CI logs in to Artifactory with repository secrets
+    run: f=$(grep -l 'artifactory.example.com' .github/workflows/*.y*ml | head -1) && python3 "$LIB/checklib.py" gha-secret-login "$f" artifactory.example.com
+  - id: ci-build-secret
+    title: CI passes the pip credentials as a build secret
+    run: f=$(grep -l 'artifactory.example.com' .github/workflows/*.y*ml | head -1) && python3 "$LIB/checklib.py" gha-build-secret "$f"
+  - id: ci-push-local
+    title: CI pushes to docker-local
+    run: f=$(grep -l 'artifactory.example.com' .github/workflows/*.y*ml | head -1) && python3 "$LIB/checklib.py" gha-pushes-to "$f" artifactory.example.com/docker-local/microblog
+  - id: ci-read-only
+    title: Workflow token is read-only
+    run: f=$(grep -l 'artifactory.example.com' .github/workflows/*.y*ml | head -1) && python3 "$LIB/checklib.py" gha-permissions-read "$f"
+    required: false
+  - id: ci-pinned
+    title: Actions pinned to real released commit SHAs
+    run: f=$(grep -l 'artifactory.example.com' .github/workflows/*.y*ml | head -1) && python3 "$LIB/checklib.py" gha-pinned "$f" && python3 "$LIB/checklib.py" gha-known-shas "$f"
+    required: false
+  - id: hadolint-errors
+    title: hadolint reports no errors
+    run: hadolint --no-color --failure-threshold error Dockerfile
+    required: false

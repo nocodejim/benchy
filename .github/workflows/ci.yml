@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build images
+        run: ./bench build
+      - name: Lint (shellcheck, hadolint, actionlint)
+        run: |
+          docker run --rm -v "$PWD:/w:ro" -w /w benchy-grader:local bash -c '
+            shellcheck bench docker/install-tools.sh tasks/_lib/*.sh tasks/*/prefetch.sh &&
+            hadolint --failure-threshold warning docker/agent.Dockerfile docker/grader.Dockerfile &&
+            actionlint -no-color'
+      - name: Validate task definitions
+        run: >-
+          docker run --rm --network none -v "$PWD:/bench:ro" benchy-grader:local
+          python3 -m benchy.cli validate --contenders /bench/contenders.example.yaml /bench/tests/selftest/contenders.yaml
+      - name: Unit tests
+        run: ./bench test
+      - name: Self-test (sandbox probe, every task fails at start and passes with its golden solution)
+        run: ./bench selftest
+      - name: Secret scan of repository and outputs
+        run: >-
+          docker run --rm -v "$PWD:/w:ro" -w /w benchy-grader:local
+          gitleaks dir --no-banner --redact --exit-code 1 --config /w/.gitleaks.toml /w

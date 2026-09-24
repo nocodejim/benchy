@@ -1,0 +1,23 @@
+id: bugfix-unit
+title: "Fix: revoked API tokens keep working (INC-2041)"
+category: code
+repo: microblog
+timeout_s: 900
+prompt: prompt.md
+setup:
+  - patch: setup/inject-bug.patch
+allowed_paths: ["app/**", "tests.py"]
+checks:
+  - id: hidden-token-tests
+    title: Hidden token lifecycle tests pass (model + API)
+    run: cp "$HIDDEN/test_hidden_tokens.py" . && .venv/bin/python -m unittest -v test_hidden_tokens
+    weight: 4
+  - id: regression-test-added
+    title: A new token regression test was added to tests.py
+    run: git diff "$BASELINE" -- tests.py | grep -E '^\+\s*def test_\w*' | grep -qiE 'token|revok'
+    weight: 1
+    required: false
+  - id: suite-with-new-tests
+    title: The updated tests.py passes
+    run: .venv/bin/python -m unittest -q tests
+    weight: 1

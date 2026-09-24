@@ -1,0 +1,22 @@
+# Default target: Miguel Grinberg's Flask Mega-Tutorial app (MIT licensed).
+# A small, real, widely-read web app with a Dockerfile, a unittest suite and
+# no CI, deployment manifests or registry config: a realistic "legacy service"
+# that a platform team would be asked to modernize.
+url: https://github.com/miguelgrinberg/microblog.git
+sha: a975ef64864354867c88e0ed3a17ba7d17dca752
+license: MIT
+
+# Part of the known starting state for every task (recorded in the setup commit).
+prepare:
+  # multidict 6.0.4 has no Python 3.12 wheels; 6.0.5 is the minimal compatible bump.
+  - patch: microblog/py312-deps.patch
+
+# Runs once per unique dependency set (cached), with network, in the grader image.
+deps: |
+  /usr/bin/python3 -m venv .venv
+  .venv/bin/pip install -q --prefer-binary -r requirements.txt
+deps_files: [requirements.txt]
+
+# The repo's own tests; run with the baseline test files restored for the regression check.
+test_cmd: .venv/bin/python -m unittest -q tests
+test_files: [tests.py]

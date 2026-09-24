@@ -1,0 +1,7 @@
+
+Total usage est:        14.2 AI Credits
+API time spent:         2m 59.6s
+Total session time:     12m 15.7s
+Total code changes:     +206 -77
+Breakdown by AI model:
+ claude-sonnet-5        1.2m in, 12.3k out [4.1k reasoning], 1.1m cached (Est. 14.2 AI Credits)

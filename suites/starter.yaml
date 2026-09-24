@@ -1,0 +1,8 @@
+# Starter suite: six short, realistic platform/DevOps tasks on one real app.
+tasks:
+  - bugfix-unit
+  - gha-ci-add
+  - gha-ci-fix
+  - container-harden
+  - artifactory-route
+  - rancher-deploy

@@ -1,0 +1,2 @@
+{"traceId": "t", "parentId": null, "id": "r", "name": "invoke_agent", "attributes": {"github.copilot.nano_aiu": 7000000000}}
+{"traceId": "t", "parentId": "r", "id": "c", "name": "chat gpt-5.4", "attributes": {"gen_ai.response.model": "gpt-5.4", "gen_ai.usage.input_tokens": 1000, "gen_ai.usage.output_tokens": 100}}

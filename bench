@@ -1,0 +1,250 @@
+#!/usr/bin/env bash
+# benchy host launcher. Needs only bash + docker (or podman). All real work
+# happens inside the benchy-agent / benchy-grader containers.
+#
+#   ./bench build                      build both images (pinned versions in docker/versions.env)
+#   ./bench login copilot|claude       one-time browser/device-code login, stored in a Docker volume
+#   ./bench logout [copilot|claude]    delete stored login(s)
+#   ./bench run [options]              run a batch: setup -> agent -> grade/screenshots -> report
+#   ./bench report [--batch ID|all]    rebuild the HTML/Markdown/CSV report
+#   ./bench selftest                   zero-cost end-to-end test with mock harnesses
+#   ./bench test                       unit tests
+#   ./bench doctor                     check the environment
+#   ./bench shell agent|grader         debug shell
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OUT="${BENCHY_OUT:-$ROOT/out}"
+ENGINE="${BENCHY_ENGINE:-docker}"
+AGENT_IMAGE="${BENCHY_AGENT_IMAGE:-benchy-agent:local}"
+GRADER_IMAGE="${BENCHY_GRADER_IMAGE:-benchy-grader:local}"
+AUTH_VOLUME="${BENCHY_AUTH_VOLUME:-benchy-auth}"
+AGENT_CPUS="${BENCHY_AGENT_CPUS:-4}"
+AGENT_MEMORY="${BENCHY_AGENT_MEMORY:-6g}"
+AGENT_NETWORK="${BENCHY_AGENT_NETWORK:-bridge}"
+
+log() { printf '\033[1m[bench]\033[0m %s\n' "$*" >&2; }
+die() { printf '\033[31m[bench] error:\033[0m %s\n' "$*" >&2; exit 1; }
+
+if [[ "$ENGINE" == podman ]]; then
+  USER_ARGS=(--userns=keep-id)
+else
+  USER_ARGS=(--user "$(id -u):$(id -g)")
+fi
+
+# Corporate proxies are passed through to the steps that need the network.
+PROXY_ENV=()
+for v in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy; do
+  [[ -n "${!v:-}" ]] && PROXY_ENV+=(-e "$v=${!v}")
+done
+CA_ARGS=()
+if [[ -n "${BENCHY_CA_BUNDLE:-}" ]]; then
+  [[ -f "$BENCHY_CA_BUNDLE" ]] || die "BENCHY_CA_BUNDLE not found: $BENCHY_CA_BUNDLE"
+  CA_ARGS=(-v "$BENCHY_CA_BUNDLE:/etc/benchy/ca.pem:ro" -e NODE_EXTRA_CA_CERTS=/etc/benchy/ca.pem)
+fi
+
+image_id() { "$ENGINE" image inspect --format '{{.Id}}' "$1" 2>/dev/null || echo unknown; }
+
+need_images() {
+  for img in "$AGENT_IMAGE" "$GRADER_IMAGE"; do
+    "$ENGINE" image inspect "$img" >/dev/null 2>&1 || { log "image $img missing, building"; cmd_build; return; }
+  done
+}
+
+# Hardened grader container. $1 = network (none|bridge); remaining args go to `run`.
+grader() {
+  local net="$1"; shift
+  "$ENGINE" run --rm "${USER_ARGS[@]}" \
+    --cap-drop ALL --security-opt no-new-privileges \
+    --read-only --tmpfs /tmp:rw,exec,nosuid,size=2g --shm-size 512m \
+    --pids-limit 2048 --network "$net" \
+    -e HOME=/tmp/home -e BENCHY_AGENT_IMAGE="$(image_id "$AGENT_IMAGE")" \
+    -e BENCHY_GRADER_IMAGE="$(image_id "$GRADER_IMAGE")" \
+    -v "$ROOT:/bench:ro" -v "$OUT:/out" "$@"
+}
+
+cmd_build() {
+  local args=()
+  while IFS='=' read -r k v; do
+    [[ "$k" =~ ^[A-Z0-9_]+$ ]] && args+=(--build-arg "$k=$v")
+  done < "$ROOT/docker/versions.env"
+  log "building $AGENT_IMAGE"
+  "$ENGINE" build "${args[@]}" -f "$ROOT/docker/agent.Dockerfile" -t "$AGENT_IMAGE" "$ROOT"
+  log "building $GRADER_IMAGE"
+  "$ENGINE" build "${args[@]}" -f "$ROOT/docker/grader.Dockerfile" -t "$GRADER_IMAGE" "$ROOT"
+}
+
+cmd_login() {
+  local h="${1:-}"
+  [[ "$h" == copilot || "$h" == claude ]] || die "usage: ./bench login copilot|claude"
+  need_images
+  "$ENGINE" volume create "$AUTH_VOLUME" >/dev/null
+  # Named volumes start root-owned; hand this harness's directory to the invoking user.
+  "$ENGINE" run --rm --user 0 --network none -v "$AUTH_VOLUME:/auth" "$AGENT_IMAGE" \
+    sh -c "mkdir -p /auth/$h && chown $(id -u):$(id -g) /auth /auth/$h && chmod 700 /auth /auth/$h"
+  log "starting $h login. Follow the instructions (open the URL in your normal browser, enter the code)."
+  "$ENGINE" run --rm -it "${USER_ARGS[@]}" --cap-drop ALL --security-opt no-new-privileges \
+    --tmpfs /tmp:rw,exec,nosuid -e HOME=/tmp/home "${PROXY_ENV[@]}" "${CA_ARGS[@]}" \
+    -v "$ROOT/src:/opt/benchy:ro" -v "$AUTH_VOLUME:/auth" \
+    "$AGENT_IMAGE" python3 -m benchy.cli login "$h"
+  if "$ENGINE" run --rm --user 0 --network none -v "$AUTH_VOLUME:/auth:ro" "$AGENT_IMAGE" \
+       sh -c "[ -n \"\$(ls -A /auth/$h 2>/dev/null)\" ]"; then
+    log "$h login stored in Docker volume '$AUTH_VOLUME' (never in this repo or in results)."
+  else
+    die "no credentials were stored for $h"
+  fi
+}
+
+cmd_logout() {
+  local h="${1:-all}"
+  if [[ "$h" == all ]]; then
+    if "$ENGINE" volume rm "$AUTH_VOLUME" >/dev/null 2>&1; then log "deleted volume $AUTH_VOLUME"; else log "no stored logins"; fi
+  else
+    "$ENGINE" run --rm --user 0 --network none -v "$AUTH_VOLUME:/auth" "$AGENT_IMAGE" rm -rf "/auth/$h"
+    log "deleted stored $h login"
+  fi
+  log "To also revoke the token server-side: GitHub > Settings > Applications > Authorized OAuth Apps (Copilot),"
+  log "or claude.ai > Settings for Claude."
+}
+
+run_one() {
+  local rid="$1" task="$2" harness="$3" timeout="$4"
+  local work="$OUT/work/$rid" rdir="$OUT/runs/$rid"
+  mkdir -p "$work"
+
+  grader bridge -v "$work:/work" "${PROXY_ENV[@]}" "$GRADER_IMAGE" \
+    python3 -m benchy.cli setup "$rid" || { log "setup failed for $rid"; return 1; }
+
+  local extra=()
+  case "$harness" in
+    mock) extra+=(-v "$ROOT/tasks/$task/hidden/solution.patch:/run/benchy/solution.patch:ro") ;;
+    noop|probe) ;;
+    *)    extra+=(-v "$AUTH_VOLUME:/auth:ro") ;;
+  esac
+  local name="benchy-agent-$rid"
+  timeout --kill-after=30 "$((timeout + 300))" \
+    "$ENGINE" run --rm --name "$name" "${USER_ARGS[@]}" \
+      --cap-drop ALL --security-opt no-new-privileges \
+      --read-only --tmpfs /tmp:rw,exec,nosuid,size=4g \
+      --pids-limit 2048 --cpus "$AGENT_CPUS" --memory "$AGENT_MEMORY" \
+      --network "$AGENT_NETWORK" -e HOME=/tmp/home "${PROXY_ENV[@]}" "${CA_ARGS[@]}" \
+      -v "$ROOT/src:/opt/benchy:ro" \
+      -v "$work:/work" \
+      -v "$rdir/raw:/raw" \
+      -v "$rdir/run.json:/run/benchy/run.json:ro" \
+      -v "$rdir/prompt.md:/run/benchy/prompt.md:ro" \
+      "${extra[@]}" "$AGENT_IMAGE" python3 -m benchy.cli agent \
+    || log "agent step exited non-zero for $rid (recorded; grading anyway)"
+  "$ENGINE" rm -f "$name" >/dev/null 2>&1 || true
+
+  local fin=()
+  [[ "$KEEP" == 1 ]] && fin+=(--keep-workspace)
+  [[ "$SHOTS" == 0 ]] && fin+=(--no-screenshots)
+  grader none -v "$work:/work" "$GRADER_IMAGE" \
+    python3 -m benchy.cli finalize "$rid" "${fin[@]}" || { log "finalize failed for $rid"; return 1; }
+  [[ "$KEEP" == 1 ]] || rm -rf "$work"
+}
+
+LAST_BATCH=""
+cmd_run() {
+  local contenders="contenders.yaml" suite="starter" tasks="" repeats=3 scale=1
+  KEEP=0; SHOTS=1
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --contenders) contenders="$2"; shift 2 ;;
+      --suite) suite="$2"; shift 2 ;;
+      --tasks) tasks="$2"; shift 2 ;;
+      --repeats) repeats="$2"; shift 2 ;;
+      --timeout-scale) scale="$2"; shift 2 ;;
+      --keep-workspaces) KEEP=1; shift ;;
+      --no-screenshots) SHOTS=0; shift ;;
+      *) die "unknown option $1" ;;
+    esac
+  done
+  [[ -f "$ROOT/$contenders" ]] || die "contenders file not found: $contenders (copy contenders.example.yaml to contenders.yaml)"
+  need_images
+  mkdir -p "$OUT"
+  local planargs=(--contenders "/bench/$contenders" --suite "$suite" --repeats "$repeats" --timeout-scale "$scale")
+  [[ -n "$tasks" ]] && planargs+=(--tasks "$tasks")
+  local plan
+  plan="$(grader none "$GRADER_IMAGE" python3 -m benchy.cli plan "${planargs[@]}")" || die "planning failed"
+  local total i=0 failed=0
+  total=$(grep -c . <<<"$plan")
+  LAST_BATCH="${plan%%-*}"
+  log "batch $LAST_BATCH: $total runs"
+  while IFS=$'\t' read -r rid task harness timeout; do
+    i=$((i + 1))
+    log "[$i/$total] $rid"
+    run_one "$rid" "$task" "$harness" "$timeout" </dev/null || failed=$((failed + 1))
+  done <<<"$plan"
+  [[ "$failed" -gt 0 ]] && log "$failed run(s) could not be graded; see messages above"
+  cmd_report --batch "$LAST_BATCH"
+}
+
+cmd_report() {
+  need_images
+  grader none "$GRADER_IMAGE" python3 -m benchy.cli report "$@"
+}
+
+cmd_selftest() {
+  cmd_run --contenders tests/selftest/probe.yaml --tasks bugfix-unit --repeats 1
+  local probe_batch="$LAST_BATCH"
+  cmd_run --contenders tests/selftest/contenders.yaml --suite starter --repeats 1
+  grader none "$GRADER_IMAGE" python3 -m benchy.cli verify-selftest "$LAST_BATCH" --probe-batch "$probe_batch"
+}
+
+cmd_test() {
+  need_images
+  grader none "$GRADER_IMAGE" python3 -m pytest -q -p no:cacheprovider /bench/tests "$@"
+}
+
+cmd_doctor() {
+  command -v "$ENGINE" >/dev/null || die "$ENGINE not found (install Docker Desktop and enable WSL integration)"
+  "$ENGINE" info >/dev/null 2>&1 || die "$ENGINE is installed but not running"
+  log "engine: $ENGINE $("$ENGINE" version --format '{{.Server.Version}}' 2>/dev/null || true)"
+  case "$ROOT" in /mnt/*) log "WARNING: repo is on the Windows filesystem ($ROOT). Clone it inside WSL (e.g. ~/benchy) for speed and correct permissions." ;; esac
+  for img in "$AGENT_IMAGE" "$GRADER_IMAGE"; do
+    if "$ENGINE" image inspect "$img" >/dev/null 2>&1; then log "image ok: $img"; else log "image missing: $img (run ./bench build)"; fi
+  done
+  if "$ENGINE" volume inspect "$AUTH_VOLUME" >/dev/null 2>&1; then
+    for h in copilot claude; do
+      if "$ENGINE" run --rm --user 0 --network none -v "$AUTH_VOLUME:/auth:ro" "$AGENT_IMAGE" \
+           sh -c "[ -n \"\$(ls -A /auth/$h 2>/dev/null)\" ]" 2>/dev/null; then
+        log "login stored: $h"
+      else
+        log "no login: $h (./bench login $h)"
+      fi
+    done
+  else
+    log "no stored logins yet (./bench login copilot)"
+  fi
+  if [[ -f "$ROOT/contenders.yaml" ]]; then log "contenders.yaml present"; else log "create contenders.yaml from contenders.example.yaml"; fi
+}
+
+cmd_shell() {
+  case "${1:-}" in
+    agent)  "$ENGINE" run --rm -it "${USER_ARGS[@]}" -e HOME=/tmp/home --tmpfs /tmp:rw,exec \
+              -v "$ROOT/src:/opt/benchy:ro" "$AGENT_IMAGE" bash ;;
+    grader) grader none -it "$GRADER_IMAGE" bash ;;
+    *) die "usage: ./bench shell agent|grader" ;;
+  esac
+}
+
+main() {
+  local cmd="${1:-help}"; shift || true
+  case "$cmd" in
+    build) cmd_build ;;
+    login) cmd_login "$@" ;;
+    logout) cmd_logout "$@" ;;
+    run) cmd_run "$@" ;;
+    report) cmd_report "$@" ;;
+    selftest) cmd_selftest ;;
+    test) cmd_test "$@" ;;
+    doctor) cmd_doctor ;;
+    shell) cmd_shell "$@" ;;
+    help|-h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
+    *) die "unknown command '$cmd' (try ./bench help)" ;;
+  esac
+}
+
+main "$@"

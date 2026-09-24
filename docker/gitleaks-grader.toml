@@ -1,0 +1,6 @@
+# Config the GRADER uses when scanning an agent's changes. Passed explicitly so a
+# .gitleaks.toml / .gitleaksignore written by the agent can't weaken the scan.
+title = "benchy grader"
+
+[extend]
+useDefault = true

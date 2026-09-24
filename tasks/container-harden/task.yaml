@@ -1,0 +1,59 @@
+id: container-harden
+title: "Production-ready Dockerfile + Compose for Docker/Podman (PLAT-402)"
+category: containers
+repo: microblog
+timeout_s: 1200
+prompt: prompt.md
+allowed_paths:
+  - Dockerfile
+  - Containerfile
+  - .dockerignore
+  - compose.yaml
+  - compose.yml
+  - docker-compose.yaml
+  - docker-compose.yml
+  - .env.example
+  - boot.sh
+  - README.md
+  - docs/**
+checks:
+  - id: hadolint
+    title: hadolint passes at warning threshold
+    run: hadolint --no-color --failure-threshold warning Dockerfile
+    weight: 2
+  - id: multistage
+    title: Multi-stage build
+    run: python3 "$LIB/checklib.py" docker-multistage
+  - id: pinned-base
+    title: Base images pinned to a version or digest
+    run: python3 "$LIB/checklib.py" docker-base-pinned
+  - id: non-root
+    title: Runs as a non-root user
+    run: python3 "$LIB/checklib.py" docker-nonroot
+    weight: 2
+  - id: numeric-uid
+    title: Non-root user is numeric (verifiable by Kubernetes)
+    run: python3 "$LIB/checklib.py" docker-numeric-user
+    required: false
+  - id: healthcheck
+    title: HEALTHCHECK defined
+    run: python3 "$LIB/checklib.py" docker-healthcheck
+  - id: dockerignore
+    title: .dockerignore excludes .git, .env, .venv, __pycache__
+    run: python3 "$LIB/checklib.py" dockerignore .git .env .venv __pycache__
+  - id: compose-valid
+    title: compose file is valid against the Compose spec
+    run: python3 "$LIB/checklib.py" compose-valid
+    weight: 2
+  - id: compose-secrets
+    title: No literal passwords/secrets in the compose file
+    run: python3 "$LIB/checklib.py" compose-db-secret-not-literal
+    weight: 2
+  - id: compose-healthy-dep
+    title: Web waits for a healthy database
+    run: python3 "$LIB/checklib.py" compose-depends-healthy
+    required: false
+  - id: env-example
+    title: .env.example documents the required variables
+    run: test -f .env.example && ! test -f .env
+    required: false

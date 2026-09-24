@@ -1,0 +1,58 @@
+diff --git a/app/models.py b/app/models.py
+index e9e6f46..db447d8 100644
+--- a/app/models.py
++++ b/app/models.py
+@@ -259,7 +259,7 @@ class User(PaginatedAPIMixin, UserMixin, db.Model):
+     def get_token(self, expires_in=3600):
+         now = datetime.now(timezone.utc)
+         if self.token and self.token_expiration.replace(
+-                tzinfo=timezone.utc) < now + timedelta(seconds=60):
++                tzinfo=timezone.utc) > now + timedelta(seconds=60):
+             return self.token
+         self.token = secrets.token_hex(16)
+         self.token_expiration = now + timedelta(seconds=expires_in)
+@@ -267,7 +267,7 @@ class User(PaginatedAPIMixin, UserMixin, db.Model):
+         return self.token
+ 
+     def revoke_token(self):
+-        self.token_expiration = self.token_expiration - timedelta(
++        self.token_expiration = datetime.now(timezone.utc) - timedelta(
+             seconds=1)
+ 
+     @staticmethod
+diff --git a/tests.py b/tests.py
+index 4ef9098..385df16 100755
+--- a/tests.py
++++ b/tests.py
+@@ -102,5 +102,31 @@ class UserModelCase(unittest.TestCase):
+         self.assertEqual(f4, [p4])
+ 
+ 
++class TokenCase(unittest.TestCase):
++    def setUp(self):
++        self.app = create_app(TestConfig)
++        self.app_context = self.app.app_context()
++        self.app_context.push()
++        db.create_all()
++
++    def tearDown(self):
++        db.session.remove()
++        db.drop_all()
++        self.app_context.pop()
++
++    def test_token_reuse_and_revoke(self):
++        u = User(username='john', email='john@example.com')
++        db.session.add(u)
++        db.session.commit()
++        token = u.get_token()
++        db.session.commit()
++        self.assertEqual(u.get_token(), token)
++        self.assertEqual(User.check_token(token), u)
++        u.revoke_token()
++        db.session.commit()
++        self.assertIsNone(User.check_token(token))
++        self.assertNotEqual(u.get_token(), token)
++
++
+ if __name__ == '__main__':
+     unittest.main(verbosity=2)

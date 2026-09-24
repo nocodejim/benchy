@@ -1,0 +1,33 @@
+{
+  "totalPremiumRequestCost": 0,
+  "totalUserRequests": 1,
+  "totalNanoAiu": 7000000000,
+  "totalApiDurationMs": 61234,
+  "sessionStartTime": "2026-09-24T02:36:53.756Z",
+  "codeChanges": {
+    "linesAdded": 28,
+    "linesRemoved": 2,
+    "filesModifiedCount": 2,
+    "filesModified": [
+      "app/models.py",
+      "tests.py"
+    ]
+  },
+  "modelMetrics": {
+    "gpt-5.4": {
+      "usage": {
+        "inputTokens": 9000,
+        "outputTokens": 700,
+        "cacheReadTokens": 4000,
+        "reasoningTokens": 300
+      },
+      "requests": {
+        "count": 2,
+        "cost": 0
+      }
+    }
+  },
+  "agentMetrics": {},
+  "lastCallInputTokens": 3000,
+  "lastCallOutputTokens": 120
+}

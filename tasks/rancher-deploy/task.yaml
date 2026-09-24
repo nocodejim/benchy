@@ -1,0 +1,48 @@
+id: rancher-deploy
+title: "Helm chart + Rancher Fleet bundle (PLAT-455)"
+category: kubernetes
+repo: microblog
+timeout_s: 1500
+prompt: prompt.md
+allowed_paths: ["deploy/**", "README.md", "docs/**"]
+checks:
+  - id: helm-lint
+    title: helm lint passes
+    run: helm lint deploy/helm/microblog
+    weight: 2
+  - id: kubeconform
+    title: Rendered manifests validate (kubeconform -strict)
+    run: >-
+      helm template microblog deploy/helm/microblog --namespace microblog > /tmp/rendered.yaml &&
+      kubeconform -strict -summary -ignore-missing-schemas
+      -schema-location "$SCHEMAS/{{.ResourceKind}}{{.KindSuffix}}.json" /tmp/rendered.yaml
+    weight: 2
+  - id: kinds
+    title: Renders a Deployment, Service and Ingress
+    run: helm template microblog deploy/helm/microblog > /tmp/rendered.yaml && python3 "$LIB/checklib.py" k8s-has Deployment Service Ingress
+  - id: resources
+    title: CPU/memory requests and limits
+    run: helm template microblog deploy/helm/microblog > /tmp/rendered.yaml && python3 "$LIB/checklib.py" k8s-resources
+  - id: probes
+    title: Readiness and liveness probes
+    run: helm template microblog deploy/helm/microblog > /tmp/rendered.yaml && python3 "$LIB/checklib.py" k8s-probes
+  - id: security-context
+    title: Hardened security context
+    run: helm template microblog deploy/helm/microblog > /tmp/rendered.yaml && python3 "$LIB/checklib.py" k8s-security
+    weight: 2
+  - id: secret-refs
+    title: DATABASE_URL / SECRET_KEY from an existing Secret
+    run: helm template microblog deploy/helm/microblog > /tmp/rendered.yaml && python3 "$LIB/checklib.py" k8s-secret-refs DATABASE_URL SECRET_KEY
+    weight: 2
+  - id: service-port
+    title: Service exposes port 80
+    run: helm template microblog deploy/helm/microblog > /tmp/rendered.yaml && python3 "$LIB/checklib.py" k8s-service-port 80
+    required: false
+  - id: fleet
+    title: Fleet bundle targets staging and production clusters
+    run: python3 "$LIB/checklib.py" fleet deploy/fleet.yaml
+    weight: 2
+  - id: fleet-prod-replicas
+    title: Production runs 3 replicas
+    run: python3 "$LIB/checklib.py" fleet-prod-replicas deploy/fleet.yaml 3
+    required: false

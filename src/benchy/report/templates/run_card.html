@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ run.task }} · {{ run.contender.name }}</title>
+<style>
+  :root {
+    --surface: #fcfcfb; --panel: #ffffff; --border: #e4e3df;
+    --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974;
+    --good: #0ca30c; --good-text: #006300; --critical: #d03b3b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .card { width: 1100px; padding: 28px 32px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--text-2); margin-bottom: 20px; }
+  .verdict { display: inline-flex; gap: 8px; align-items: center; font-weight: 600;
+             padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); }
+  .ok { color: var(--good-text); } .bad { color: var(--critical); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0; }
+  .tile { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .tile .k { color: var(--text-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .tile .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .d { color: var(--muted); font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel);
+          border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--text-2); font-weight: 600; font-size: 12px; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .add { color: var(--good-text); } .del { color: var(--critical); }
+  h2 { font-size: 15px; margin: 22px 0 8px; }
+  .warn { color: var(--text-2); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>{{ run.task_title }}</h1>
+  <div class="sub">{{ run.contender.name }} · {{ run.contender.harness }} · model <b>{{ run.contender.model or "default" }}</b>
+    · effort <b>{{ run.contender.effort or "default" }}</b> · repeat {{ run.repeat }} · branch <code>{{ run.branch }}</code></div>
+  {% if m.outcome.resolved %}
+  <span class="verdict ok">✓ Resolved</span>
+  {% else %}
+  <span class="verdict bad">✗ Not resolved</span>
+  {% endif %}
+  <span class="sub">&nbsp; score {{ (m.outcome.score or 0) | pct }} · {{ m.outcome.checks_passed }}/{{ m.outcome.checks_total }} checks · exit: {{ m.outcome.exit_status }}</span>
+
+  <div class="grid">
+    <div class="tile"><div class="k">Wall time</div><div class="v">{{ m.time.wall_s | dur }}</div>
+      <div class="d">API time {{ m.time.api_s | dur }}</div></div>
+    <div class="tile"><div class="k">Cost</div><div class="v">{{ m.cost.usd | usd }}</div>
+      <div class="d">{% if m.cost.ai_credits is not none %}{{ m.cost.ai_credits | num(1) }} AI credits · {% endif %}{{ m.cost.usd_source or "unknown" }}</div></div>
+    <div class="tile"><div class="k">Tokens</div><div class="v">{{ m.tokens.total | k }}</div>
+      <div class="d">out {{ m.tokens.output | k }} · cached {{ m.tokens.cache_read | k }}{% if m.tokens.reasoning is not none %} · reasoning {{ m.tokens.reasoning | k }}{% endif %}</div></div>
+    <div class="tile"><div class="k">Tool calls</div><div class="v">{{ m.activity.tool_calls | num }}</div>
+      <div class="d">{{ m.activity.turns | num }} turns{% for kind, n in (m.activity.tool_calls_by_kind or {}).items() %} · {{ kind }} {{ n }}{% endfor %}</div></div>
+  </div>
+
+  <h2>Files changed ({{ ds.files | length }}) <span class="add">+{{ ds.added }}</span> <span class="del">−{{ ds.deleted }}</span></h2>
+  <table>
+    <tr><th>File</th><th style="text-align:right">Added</th><th style="text-align:right">Deleted</th></tr>
+    {% for line in ds.numstat.splitlines() %}{% set p = line.split("\t", 2) %}
+    <tr><td><code>{{ p[2] }}</code></td><td class="num add">+{{ p[0] }}</td><td class="num del">−{{ p[1] }}</td></tr>
+    {% else %}
+    <tr><td colspan="3" class="warn">No changes.</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>Checks</h2>
+  <table>
+    <tr><th></th><th>Check</th><th>Required</th><th style="text-align:right">Weight</th></tr>
+    {% for c in grade.checks %}
+    <tr><td class="{{ 'ok' if c.passed else 'bad' }}">{{ '✓ pass' if c.passed else '✗ fail' }}</td>
+        <td>{{ c.title }}</td><td>{{ 'yes' if c.required else 'no' }}</td><td class="num">{{ c.weight | num }}</td></tr>
+    {% endfor %}
+  </table>
+  {% if m.warnings %}<h2>Warnings</h2>{% for w in m.warnings %}<div class="warn">• {{ w }}</div>{% endfor %}{% endif %}
+</div>
+</body>
+</html>

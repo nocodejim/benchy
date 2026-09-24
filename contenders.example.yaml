@@ -1,0 +1,21 @@
+# Copy to contenders.yaml (git-ignored) and edit. Each contender = harness + model + effort.
+#
+# harness: copilot  -> GitHub Copilot CLI (`./bench login copilot` once)
+#          claude   -> Claude Code        (`./bench login claude` once)
+# model:   the id the harness accepts (Copilot: see the /model picker, e.g. claude-sonnet-5, gpt-5.4)
+# effort:  none | minimal | low | medium | high | xhigh | max  (what the harness/model supports)
+#
+# Optional per contender:
+#   max_ai_credits: 300     # Copilot soft cap per run (min 30). Changes behaviour: use sparingly.
+#   max_budget_usd: 3       # Claude Code cap per run.
+#   extra_args: [...]       # extra CLI flags; applied only to this contender (keep contenders comparable!)
+contenders:
+  - name: "GPT-5.6 Luna · xhigh"
+    harness: copilot
+    model: gpt-5.6-luna
+    effort: xhigh
+
+  - name: "Sonnet 5 · high"
+    harness: copilot
+    model: claude-sonnet-5
+    effort: high

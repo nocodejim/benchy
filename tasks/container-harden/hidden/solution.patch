@@ -1,0 +1,111 @@
+diff --git a/.dockerignore b/.dockerignore
+new file mode 100644
+index 0000000..bab8d01
+--- /dev/null
++++ b/.dockerignore
+@@ -0,0 +1,13 @@
++.git
++.github
++.env
++.env.*
++.venv
++venv
++__pycache__
++*.pyc
++app.db
++logs
++Vagrantfile
++deployment
++tests.py
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..2bf460c
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,3 @@
++# Copy to .env and set real values locally. Never commit .env.
++POSTGRES_PASSWORD=change-me
++SECRET_KEY=change-me
+diff --git a/Dockerfile b/Dockerfile
+index 972b18b..1167910 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,16 +1,29 @@
+-FROM python:slim
++# syntax=docker/dockerfile:1
+ 
+-COPY requirements.txt requirements.txt
+-RUN pip install -r requirements.txt
+-RUN pip install gunicorn pymysql cryptography
++# --- build stage: resolve and install dependencies into a virtualenv ---------
++FROM docker.io/library/python:3.12-slim-bookworm AS build
++WORKDIR /build
++RUN python -m venv /opt/venv
++ENV PATH=/opt/venv/bin:$PATH
++COPY requirements.txt .
++RUN pip install --no-cache-dir -r requirements.txt \
++ && pip install --no-cache-dir pymysql==1.1.1 cryptography==44.0.0
+ 
++# --- runtime stage: no compilers, no pip cache, non-root ---------------------
++FROM docker.io/library/python:3.12-slim-bookworm
++RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin microblog
++WORKDIR /home/microblog
++COPY --from=build /opt/venv /opt/venv
++ENV PATH=/opt/venv/bin:$PATH \
++    FLASK_APP=microblog.py \
++    PYTHONDONTWRITEBYTECODE=1 \
++    PYTHONUNBUFFERED=1
+ COPY app app
+ COPY migrations migrations
+ COPY microblog.py config.py boot.sh ./
+-RUN chmod a+x boot.sh
+-
+-ENV FLASK_APP microblog.py
+-RUN flask translate compile
+-
++RUN chmod a+x boot.sh && flask translate compile
++USER 10001:10001
+ EXPOSE 5000
++HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
++  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/auth/login', timeout=4)"]
+ ENTRYPOINT ["./boot.sh"]
+diff --git a/compose.yaml b/compose.yaml
+new file mode 100644
+index 0000000..c1daebd
+--- /dev/null
++++ b/compose.yaml
+@@ -0,0 +1,34 @@
++# Local stack for Docker Desktop or Podman (`podman compose`).
++# Secrets come from a local .env file (see .env.example); never commit .env.
++services:
++  web:
++    build: .
++    image: localhost/microblog:dev
++    ports:
++      - "8000:5000"
++    environment:
++      DATABASE_URL: "postgresql://microblog:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/microblog"
++      SECRET_KEY: "${SECRET_KEY:?set SECRET_KEY in .env}"
++      LOG_TO_STDOUT: "1"
++    depends_on:
++      db:
++        condition: service_healthy
++    restart: unless-stopped
++
++  db:
++    image: docker.io/library/postgres:17-alpine
++    environment:
++      POSTGRES_DB: microblog
++      POSTGRES_USER: microblog
++      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
++    volumes:
++      - db-data:/var/lib/postgresql/data
++    healthcheck:
++      test: ["CMD-SHELL", "pg_isready -U microblog -d microblog"]
++      interval: 5s
++      timeout: 3s
++      retries: 10
++    restart: unless-stopped
++
++volumes:
++  db-data: {}

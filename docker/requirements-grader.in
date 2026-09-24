@@ -1,0 +1,5 @@
+playwright==1.63.0
+pyyaml
+jinja2
+jsonschema
+pytest

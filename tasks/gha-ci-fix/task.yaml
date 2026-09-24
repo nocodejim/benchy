@@ -1,0 +1,38 @@
+id: gha-ci-fix
+title: "Fix the broken tag-release workflow (REL-77)"
+category: github-actions
+repo: microblog
+timeout_s: 900
+prompt: prompt.md
+setup:
+  - patch: setup/broken-release.patch
+allowed_paths: [".github/**"]
+checks:
+  - id: actionlint
+    title: actionlint reports no findings
+    run: actionlint -no-color .github/workflows/release.yml
+    weight: 2
+  - id: no-set-output
+    title: Deprecated ::set-output removed
+    run: python3 "$LIB/checklib.py" gha-no-set-output .github/workflows/release.yml
+  - id: version-output
+    title: build exposes the version via $GITHUB_OUTPUT
+    run: python3 "$LIB/checklib.py" gha-job-output-wired .github/workflows/release.yml build version
+    weight: 2
+  - id: publish-needs-build
+    title: publish depends on build
+    run: python3 "$LIB/checklib.py" gha-needs .github/workflows/release.yml publish build
+  - id: publish-uses-version
+    title: publish tags the image with the build version
+    run: python3 "$LIB/checklib.py" gha-uses-expr .github/workflows/release.yml publish needs.build.outputs.version
+  - id: packages-write
+    title: publish (only) gets packages write
+    run: python3 "$LIB/checklib.py" gha-only-write .github/workflows/release.yml publish packages
+    weight: 2
+  - id: tag-trigger
+    title: Still triggered by v* tags
+    run: python3 "$LIB/checklib.py" gha-tag-trigger .github/workflows/release.yml "v*"
+  - id: still-pinned
+    title: Actions still pinned to commit SHAs
+    run: python3 "$LIB/checklib.py" gha-pinned .github/workflows/release.yml
+    required: false

@@ -1,0 +1,7 @@
+{"type": "session.start", "data": {}}
+{"type": "assistant.turn_start", "data": {}}
+{"type": "tool.execution_start", "data": {"toolCallId": "t1", "toolName": "bash"}}
+{"type": "tool.execution_complete", "data": {"toolCallId": "t1", "toolName": "bash"}}
+{"type": "assistant.turn_start", "data": {}}
+{"type": "tool.execution_start", "data": {"toolCallId": "t2", "toolName": "edit"}}
+{"type": "session.shutdown", "data": {"modelMetrics": {"gpt-5.4": {"usage": {"inputTokens": 9000, "outputTokens": 700, "cacheReadTokens": 4000, "cacheWriteTokens": 0, "reasoningTokens": 300}, "requests": {"count": 2, "cost": 0}}}}}

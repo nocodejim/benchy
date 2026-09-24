@@ -1,0 +1,23 @@
+# benchy results — batch {{ batch }}
+
+{{ agg.total_runs }} runs · {{ agg.tasks | length }} tasks{% if plan %} · {{ plan.repeats }} repeat{{ 's' if plan.repeats != 1 }}{% endif %} · generated {{ generated }}
+
+| Contender | Resolved | pass^k | Cost / resolved | Credits / resolved | Median time | Median tokens | Median tool calls |
+|---|---:|---:|---:|---:|---:|---:|---:|
+{% for c in agg.contenders %}{% set s = agg.stats[c] %}
+| {{ c }} | {{ s.resolved }}/{{ s.runs }} ({{ s.resolve_rate | pct }}) | {{ s.pass_all_k | pct }} | {{ s.usd_per_resolved | usd }} | {{ s.credits_per_resolved | num(1) }} | {{ s.wall_s.median | dur }} | {{ s.tokens.median | k }} | {{ s.tool_calls.median | num }} |
+{% endfor %}
+
+## Per task (resolved / runs)
+
+| Task |{% for c in agg.contenders %} {{ c }} |{% endfor %}
+
+|---|{% for c in agg.contenders %}---:|{% endfor %}
+
+{% for t in agg.tasks %}
+| {{ t }} |{% for c in agg.contenders %}{% set cell = agg.matrix.get((t, c)) %} {% if cell %}{{ cell.resolved }}/{{ cell.runs }}{% else %}—{% endif %} |{% endfor %}
+
+{% endfor %}
+
+Resolved = every required hidden check passed (incl. existing tests, scope, no secrets).
+Cost / resolved = all spend incl. failed attempts ÷ runs resolved. “—” = not reported.

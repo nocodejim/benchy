@@ -1,0 +1,13 @@
+# Repository scan config (CI). Test files contain deliberately fake secrets.
+title = "benchy repository"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "fake credentials used to test redaction and checks; dependency caches"
+paths = [
+  '''tests/test_redact\.py''',
+  '''tests/test_checklib\.py''',
+  '''out/cache/''',
+]

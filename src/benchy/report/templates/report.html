@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>benchy results {{ batch }}</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb; --panel: #ffffff; --border: #e4e3df; --grid: #eeede9;
+    --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974;
+    --good-text: #006300; --critical: #d03b3b;
+    {% for c in series_light %}--s{{ loop.index0 }}: {{ c }};{% endfor %}
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface: #1a1a19; --panel: #222221; --border: #383835; --grid: #2c2c2a;
+      --text: #ffffff; --text-2: #c3c2b7; --muted: #9a998f;
+      --good-text: #4cc94c; --critical: #e66767;
+      {% for c in series_dark %}--s{{ loop.index0 }}: {{ c }};{% endfor %}
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface: #1a1a19; --panel: #222221; --border: #383835; --grid: #2c2c2a;
+    --text: #ffffff; --text-2: #c3c2b7; --muted: #9a998f;
+    --good-text: #4cc94c; --critical: #e66767;
+    {% for c in series_dark %}--s{{ loop.index0 }}: {{ c }};{% endfor %}
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--text);
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1320px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 24px; margin: 0; } h2 { font-size: 17px; margin: 32px 0 10px; }
+  .sub, .note { color: var(--text-2); } .note { font-size: 13px; }
+  code { font-size: 12px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0 4px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; }
+  .chart { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .chart h3 { font-size: 14px; margin: 0; } .chart .hint { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  .row { display: grid; grid-template-columns: minmax(120px, 34%) 1fr; align-items: center; gap: 8px; margin: 6px 0; }
+  .row .name { color: var(--text-2); font-size: 12px; line-height: 1.25; }
+  .track { position: relative; height: 18px; border-left: 1px solid var(--grid); }
+  .bar { position: absolute; left: 0; top: 2px; height: 14px; border-radius: 0 4px 4px 0; min-width: 2px; }
+  .val { position: absolute; top: 0; font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums;
+         padding-left: 6px; white-space: nowrap; }
+  .row:hover .bar { filter: brightness(1.1); }
+  .scroll { overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+  th { color: var(--text-2); font-size: 12px; font-weight: 600; position: sticky; top: 0; background: var(--panel); }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  td .rng { color: var(--muted); font-size: 11px; }
+  tr:hover td { background: var(--grid); }
+  .ok { color: var(--good-text); } .bad { color: var(--critical); }
+  a { color: inherit; }
+  details { margin-top: 8px; } summary { cursor: pointer; color: var(--text-2); }
+  ul.plain { margin: 6px 0; padding-left: 18px; color: var(--text-2); }
+</style>
+</head>
+<body>
+<main>
+<section id="headline">
+  <h1>benchy results</h1>
+  <div class="sub">Batch <b>{{ batch }}</b> · {{ agg.total_runs }} runs · {{ agg.tasks | length }} tasks
+    {% if plan %}· {{ plan.repeats }} repeat{{ 's' if plan.repeats != 1 }}{% endif %} · generated {{ generated }}</div>
+
+  <div class="legend" aria-label="Contenders">
+    {% for c in agg.contenders %}<span><i class="sw" style="background:var(--s{{ loop.index0 % 8 }})"></i>{{ c }}</span>{% endfor %}
+  </div>
+
+  <div class="charts">
+  {% for title, hint, better, rows in charts %}
+    <div class="chart" role="img" aria-label="{{ title }}">
+      <h3>{{ title }}</h3><div class="hint">{{ hint }} · {{ better }}</div>
+      {% for r in rows %}
+      <div class="row" title="{{ r.name }}: {{ r.label }}">
+        <div class="name">{{ r.name }}</div>
+        <div class="track">
+          {% if r.value is not none %}
+          <div class="bar" style="width:calc({{ '%.4f' % (r.frac * 72) }}%); background:var(--s{{ r.slot }})"></div>
+          <div class="val" style="left:calc({{ '%.4f' % (r.frac * 72) }}%)">{{ r.label }}</div>
+          {% else %}<div class="val">— no data</div>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+  </div>
+
+  <h2>Scorecard</h2>
+  <div class="scroll">
+  <table>
+    <tr><th>Contender</th><th>Resolved</th><th>pass^k</th><th>Mean score</th>
+        <th>Cost / resolved</th><th>Credits / resolved</th><th>Total cost</th>
+        <th>Median time</th><th>Median tokens</th><th>Tokens / resolved</th>
+        <th>Median tool calls</th><th>Median turns</th><th>Churn (resolved)</th></tr>
+    {% for c in agg.contenders %}{% set s = agg.stats[c] %}
+    <tr>
+      <td><i class="sw" style="background:var(--s{{ loop.index0 % 8 }})"></i> {{ c }}</td>
+      <td class="n">{{ s.resolved }}/{{ s.runs }} <span class="rng">({{ s.resolve_rate | pct }})</span></td>
+      <td class="n">{{ s.pass_all_k | pct }}</td>
+      <td class="n">{{ s.mean_score | pct }}</td>
+      <td class="n">{{ s.usd_per_resolved | usd }}</td>
+      <td class="n">{{ s.credits_per_resolved | num(1) }}</td>
+      <td class="n">{{ s.usd_total | usd }}{% if not s.usd_complete %}<span class="rng" title="some runs reported no cost"> *</span>{% endif %}</td>
+      <td class="n">{{ s.wall_s.median | dur }} <span class="rng">{{ s.wall_s.min | dur }}–{{ s.wall_s.max | dur }}</span></td>
+      <td class="n">{{ s.tokens.median | k }} <span class="rng">{{ s.tokens.min | k }}–{{ s.tokens.max | k }}</span></td>
+      <td class="n">{{ s.tokens_per_resolved | k }}</td>
+      <td class="n">{{ s.tool_calls.median | num }} <span class="rng">{{ s.tool_calls.min | num }}–{{ s.tool_calls.max | num }}</span></td>
+      <td class="n">{{ s.turns.median | num }}</td>
+      <td class="n">{{ s.churn_resolved.median | num }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</section>
+
+<h2>Per task</h2>
+<div class="scroll">
+<table>
+  <tr><th>Task</th>{% for c in agg.contenders %}<th><i class="sw" style="background:var(--s{{ loop.index0 % 8 }})"></i> {{ c }}</th>{% endfor %}</tr>
+  {% for t in agg.tasks %}
+  <tr><td>{{ t }}</td>
+    {% for c in agg.contenders %}{% set cell = agg.matrix.get((t, c)) %}
+    <td>{% if cell %}
+      <span class="{{ 'ok' if cell.resolved == cell.runs else ('bad' if cell.resolved == 0 else '') }}">
+        {{ '✓' if cell.resolved == cell.runs else ('✗' if cell.resolved == 0 else '◐') }} {{ cell.resolved }}/{{ cell.runs }}</span>
+      <span class="rng">· {{ cell.usd.median | usd }} · {{ cell.wall_s.median | dur }}</span>
+    {% else %}—{% endif %}</td>
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+</div>
+
+<h2>Why runs failed</h2>
+<div class="scroll">
+<table>
+  <tr><th>Contender</th><th>Failure modes</th></tr>
+  {% for c in agg.contenders %}{% set f = agg.stats[c].failures %}
+  <tr><td>{{ c }}</td><td>{% for k, v in f.items() %}{{ k }}: {{ v }}{{ ' · ' if not loop.last }}{% else %}<span class="ok">none</span>{% endfor %}</td></tr>
+  {% endfor %}
+</table>
+</div>
+
+<h2>All runs</h2>
+<div class="scroll">
+<table>
+  <tr><th>Task</th><th>Contender</th><th>#</th><th>Result</th><th>Score</th><th>Time</th><th>Cost</th>
+      <th>Credits</th><th>Tokens</th><th>Tools</th><th>Diff</th><th>Branch</th><th>Artifacts</th></tr>
+  {% for r in runs %}
+  <tr>
+    <td>{{ r.task }}</td><td>{{ r.contender }}</td><td class="n">{{ r._repeat }}</td>
+    <td class="{{ 'ok' if r.outcome.resolved else 'bad' }}">{{ '✓ resolved' if r.outcome.resolved else '✗ ' ~ (r.outcome.exit_status if r.outcome.exit_status != 'ok' else 'failed') }}</td>
+    <td class="n">{{ r.outcome.score | pct }}</td>
+    <td class="n">{{ r.time.wall_s | dur }}</td>
+    <td class="n">{{ r.cost.usd | usd }}</td>
+    <td class="n">{{ r.cost.ai_credits | num(1) }}</td>
+    <td class="n">{{ r.tokens.total | k }}</td>
+    <td class="n">{{ r.activity.tool_calls | num }}</td>
+    <td class="n"><span class="ok">+{{ r.diff.added }}</span> <span class="bad">−{{ r.diff.deleted }}</span></td>
+    <td><code>{{ r.branch }}</code></td>
+    <td><a href="{{ rel_runs }}/{{ r.run_id }}/summary.html">summary</a> ·
+        <a href="{{ rel_runs }}/{{ r.run_id }}/diff.html">diff</a> ·
+        <a href="{{ rel_runs }}/{{ r.run_id }}/screenshots/">screenshots</a></td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+
+<h2>Environment</h2>
+<ul class="plain">
+  {% for c in agg.contenders %}{% set s = agg.stats[c] %}
+  <li><b>{{ c }}</b>: harness {{ s.harness_versions | join(', ') or '—' }}; models reported: {{ s.models_reported | join(', ') or '—' }}</li>
+  {% endfor %}
+</ul>
+
+<h2>How to read this</h2>
+<ul class="plain">
+  <li><b>Resolved</b> means every required hidden check passed, including the repo's own tests (with the original test files restored), staying within the task's allowed paths, and introducing no secrets.</li>
+  <li><b>pass^k</b> is the share of tasks a contender solved in <i>every</i> repeat. It measures consistency, which matters when a team relies on the tool daily.</li>
+  <li><b>Cost / resolved</b> divides <i>all</i> spend, failed attempts included, by the number of runs resolved. It is the fairest single cost number.</li>
+  <li>Copilot cost comes from GitHub AI Credits (1 credit = $0.01). Claude Code cost is its own client-side estimate. Costs marked “estimated-from-tokens” use <code>pricing.yaml</code>.</li>
+  <li>Medians are shown with min–max. With few repeats, treat differences smaller than the ranges as noise.</li>
+  <li>“—” means the harness did not report that value, not zero.</li>
+</ul>
+</main>
+</body>
+</html>

@@ -1,0 +1,46 @@
+id: gha-ci-add
+title: "Add a GitHub Actions CI workflow (PLAT-318)"
+category: github-actions
+repo: microblog
+timeout_s: 900
+prompt: prompt.md
+prefetch: prefetch.sh
+allowed_paths: [".github/**"]
+checks:
+  - id: actionlint
+    title: actionlint reports no findings
+    run: actionlint -no-color .github/workflows/ci.yml
+    weight: 2
+  - id: triggers
+    title: Runs on PRs to main and pushes to main
+    run: python3 "$LIB/checklib.py" gha-triggers .github/workflows/ci.yml pull_request push
+  - id: read-only-token
+    title: Workflow token is read-only
+    run: python3 "$LIB/checklib.py" gha-permissions-read .github/workflows/ci.yml
+    weight: 2
+  - id: runs-tests
+    title: Runs the unit tests
+    run: python3 "$LIB/checklib.py" gha-runs-tests .github/workflows/ci.yml
+  - id: python-312
+    title: Uses Python 3.12
+    run: python3 "$LIB/checklib.py" gha-python .github/workflows/ci.yml 3.12
+  - id: sha-pinned
+    title: Actions pinned to full commit SHAs
+    run: python3 "$LIB/checklib.py" gha-pinned .github/workflows/ci.yml
+    weight: 2
+  - id: real-shas
+    title: Pinned SHAs are real released versions (not hallucinated)
+    run: python3 "$LIB/checklib.py" gha-known-shas .github/workflows/ci.yml
+    weight: 2
+  - id: pip-cache
+    title: Caches pip downloads
+    run: python3 "$LIB/checklib.py" gha-cache .github/workflows/ci.yml
+    required: false
+  - id: concurrency
+    title: Superseded runs are cancelled
+    run: python3 "$LIB/checklib.py" gha-concurrency .github/workflows/ci.yml
+    required: false
+  - id: timeouts
+    title: Every job has a timeout
+    run: python3 "$LIB/checklib.py" gha-timeouts .github/workflows/ci.yml
+    required: false

@@ -1,0 +1,29 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index c3c91e9..e57958f 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -18,17 +18,21 @@ jobs:
+       - name: Compute version
+         id: meta
+         run: |
+-          VERSION=${GITHUB_REF_NAME#v}
+-          echo "::set-output name=version::$VERSION"
++          VERSION="${GITHUB_REF_NAME#v}"
++          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+       - name: Run tests
+         run: |
+           python -m pip install -r requirements.txt
+           python -m unittest tests
+ 
+   publish:
++    needs: build
+     runs-on: ubuntu-24.04
+     timeout-minutes: 20
+-    if: startWith(github.ref, 'refs/tags/v')
++    if: startsWith(github.ref, 'refs/tags/v')
++    permissions:
++      contents: read
++      packages: write
+     steps:
+       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0

@@ -1,0 +1,3 @@
+# Inspects the agent sandbox from the inside (./bench selftest).
+contenders:
+  - {name: "Sandbox probe", harness: probe}
