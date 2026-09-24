@@ -1,0 +1,5 @@
+# Zero-cost contenders used by `./bench selftest`.
+contenders:
+  - {name: "Mock A (golden patch)", harness: mock, model: mock-a, effort: high}
+  - {name: "Mock B (golden patch)", harness: mock, model: mock-b, effort: xhigh}
+  - {name: "Noop (starting state)", harness: noop}

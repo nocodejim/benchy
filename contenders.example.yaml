@@ -2,7 +2,7 @@
 #
 # harness: copilot  -> GitHub Copilot CLI (`./bench login copilot` once)
 #          claude   -> Claude Code        (`./bench login claude` once)
-# model:   the id the harness accepts (Copilot: see the /model picker, e.g. claude-sonnet-5, gpt-5.4)
+# model:   the id the harness accepts (Copilot: CONFIRM each id in the /model picker; see docs/work-setup.md)
 # effort:  none | minimal | low | medium | high | xhigh | max  (what the harness/model supports)
 #
 # Optional per contender:
@@ -10,12 +10,22 @@
 #   max_budget_usd: 3       # Claude Code cap per run.
 #   extra_args: [...]       # extra CLI flags; applied only to this contender (keep contenders comparable!)
 contenders:
-  - name: "GPT-5.6 Luna · xhigh"
-    harness: copilot
-    model: gpt-5.6-luna
-    effort: xhigh
+  # Four vendors, two thinking levels each, all through the same Copilot CLI harness.
+  # Ids follow GitHub's model names lowercased; confirm each in `/model` before a real batch.
+  # 8 contenders x 6 tasks x 3 repeats = 144 runs. Start with --repeats 1 (48 runs).
 
-  - name: "Sonnet 5 · high"
-    harness: copilot
-    model: claude-sonnet-5
-    effort: high
+  # --- Microsoft ---
+  - {name: "MAI-Code-1.1-Flash · medium", harness: copilot, model: mai-code-1.1-flash, effort: medium}
+  - {name: "MAI-Code-1.1-Flash · high",   harness: copilot, model: mai-code-1.1-flash, effort: high}
+
+  # --- OpenAI ---
+  - {name: "GPT-5.6 Terra · medium",      harness: copilot, model: gpt-5.6-terra,      effort: medium}
+  - {name: "GPT-5.6 Terra · xhigh",       harness: copilot, model: gpt-5.6-terra,      effort: xhigh}
+
+  # --- Google ---
+  - {name: "Gemini 3.8 Flash · low",      harness: copilot, model: gemini-3.8-flash,   effort: low}
+  - {name: "Gemini 3.8 Flash · high",     harness: copilot, model: gemini-3.8-flash,   effort: high}
+
+  # --- Anthropic ---
+  - {name: "Sonnet 5 · medium",           harness: copilot, model: claude-sonnet-5,    effort: medium}
+  - {name: "Sonnet 5 · high",             harness: copilot, model: claude-sonnet-5,    effort: high}
